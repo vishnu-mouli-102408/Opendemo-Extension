@@ -1,0 +1,27 @@
+{
+  "name": "zordon-recorder",
+  "version": "1.0.0",
+  "description": "DOM Recording and Playback Chrome Extension",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "watch": "webpack --watch --config webpack.config.js",
+    "clean": "rm -rf dist",
+    "create-icons": "node create-icons.js"
+  },
+  "dependencies": {
+    "rrweb": "^2.0.0-alpha.11",
+    "rrweb-player": "^2.0.0-alpha.11"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.246",
+    "@types/node": "^20.8.0",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "terser-webpack-plugin": "^5.3.14",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.2.2",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
