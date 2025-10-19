@@ -1,3 +1,4 @@
+import { supabase } from "../lib/supabase";
 import {
 	MessageType,
 	type RecordingSession,
@@ -89,6 +90,44 @@ class BackgroundService {
 		}
 	}
 
+	private async syncRecordingWithSupabase(recording: RecordingSession) {
+		try {
+			const userData = await chrome.storage.local.get("user");
+			console.log("User data:", userData);
+			console.log("Recording:", recording);
+			const userId = userData?.user?.id;
+			if (!userId) {
+				throw new Error("User ID not found");
+			}
+
+			const { data, error } = await supabase.from("events").insert({
+				user_id: userId,
+				id: recording?.id,
+				duration: recording?.duration,
+				endTime: recording?.endTime,
+				startTime: recording?.startTime,
+				events: JSON.stringify(recording?.events),
+				steps: JSON.stringify(recording?.steps),
+				title: recording?.title,
+				url: recording?.url,
+			});
+
+			if (error) {
+				console.log(
+					"[Zordon Background] Error syncing recording with Supabase:",
+					error,
+				);
+			}
+			console.log("[Zordon Background] Recording synced with Supabase:", data);
+		} catch (error) {
+			console.error(
+				"[Zordon Background Catch] Error syncing recording with Supabase:",
+				error,
+			);
+			throw error;
+		}
+	}
+
 	private async handleMessage(
 		message: any,
 		sender: chrome.runtime.MessageSender,
@@ -168,6 +207,13 @@ class BackgroundService {
 					if (this.currentRecording) {
 						this.currentRecording.events = message.payload.events;
 						await this.saveRecording(this.currentRecording);
+						console.log(
+							"[Zordon Background] Saved recording with",
+							this?.currentRecording?.events?.length,
+							"events and",
+							this?.currentRecording?.steps?.length || 0,
+							"steps",
+						);
 					}
 					sendResponse({ success: true });
 					break;
@@ -241,6 +287,11 @@ class BackgroundService {
 		this.currentRecording = null;
 		this.recordingStatus = RecordingStatus.IDLE;
 		await this.saveState();
+		console.log(
+			"[Zordon Background] Syncing recording with Supabase",
+			recording,
+		);
+		await this.syncRecordingWithSupabase(recording);
 
 		return recording;
 	}
