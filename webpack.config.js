@@ -1,5 +1,13 @@
 const path = require("node:path");
 const CopyPlugin = require("copy-webpack-plugin");
+const dotenv = require("dotenv");
+const webpack = require("webpack");
+const env = dotenv.config().parsed; // load .env file
+
+const envKeys = Object.keys(env).reduce((prev, next) => {
+	prev[`process.env.${next}`] = JSON.stringify(env[next]);
+	return prev;
+}, {});
 
 module.exports = {
 	mode: "production",
@@ -69,6 +77,7 @@ module.exports = {
 		new CopyPlugin({
 			patterns: [{ from: "public", to: "." }],
 		}),
+		new webpack.DefinePlugin(envKeys),
 	],
 	performance: {
 		hints: false, // Disable performance hints

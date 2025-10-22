@@ -36,6 +36,7 @@ export interface RecordingSession {
 	duration?: number;
 	events: any[];
 	title?: string;
+	steps?: any[];
 }
 
 export interface RecordingData {
