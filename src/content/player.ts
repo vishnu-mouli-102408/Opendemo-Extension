@@ -1,18 +1,19 @@
-import rrwebPlayer from "rrweb-player";
-import "rrweb-player/dist/style.css";
-import type { RecordingSession } from "../types";
+import type { ChromeDevToolsStep, RecordingSession } from "../types";
 
-// Player for replaying recordings
 class DOMPlayer {
-	private player: rrwebPlayer | null = null;
 	private playerContainer: HTMLElement | null = null;
+	private isPlaying: boolean = false;
+	private currentStepIndex: number = 0;
+	private steps: ChromeDevToolsStep[] = [];
+	private playbackSpeed: number = 1;
+	private playbackInterval: NodeJS.Timeout | null = null;
 
 	constructor() {
 		this.init();
 	}
 
 	private init() {
-		console.log("[Zordon] Player script loaded");
+		console.log("[Zordon] Custom Player script loaded");
 
 		// Listen for playback requests
 		window.addEventListener("message", (event) => {
@@ -23,145 +24,244 @@ class DOMPlayer {
 	}
 
 	private playRecording(recording: RecordingSession) {
-		console.log("[Zordon] Initializing player for:", recording.id);
+		console.log("[Zordon] Starting playback for:", recording.id);
 
 		// Remove existing player if any
 		this.cleanup();
 
-		// Create player container
+		// Extract steps from recording
+		this.steps = recording.steps || [];
+		this.currentStepIndex = 0;
+
+		if (this.steps.length === 0) {
+			console.error("[Zordon] No steps found in recording");
+			alert("This recording has no steps to play back.");
+			return;
+		}
+
+		// Create player UI
+		this.createPlayerUI(recording);
+
+		// Start playback
+		this.startPlayback();
+	}
+
+	private createPlayerUI(recording: RecordingSession) {
+		// Create minimal player container - just for completion message
 		this.playerContainer = document.createElement("div");
 		this.playerContainer.id = "zordon-player-container";
 		this.playerContainer.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1000000;
-      background: rgba(0, 0, 0, 0.95);
-      display: flex;
-      flex-direction: column;
-    `;
+			position: fixed;
+			top: 20px;
+			right: 20px;
+			width: 300px;
+			z-index: 1000000;
+			background: rgba(0, 0, 0, 0.8);
+			border-radius: 8px;
+			padding: 15px;
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			color: white;
+			display: none;
+		`;
 
-		// Create header
-		const header = this.createHeader(recording);
-		this.playerContainer.appendChild(header);
-
-		// Create player wrapper
-		const playerWrapper = document.createElement("div");
-		playerWrapper.id = "zordon-player-wrapper";
-		playerWrapper.style.cssText = `
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: auto;
-    `;
-		this.playerContainer.appendChild(playerWrapper);
+		// Simple status message
+		this.playerContainer.innerHTML = `
+			<div style="display: flex; align-items: center; gap: 10px;">
+				<div style="font-size: 16px;">🎬</div>
+				<div>
+					<div style="font-weight: 600; margin-bottom: 2px;">Playing Recording</div>
+					<div style="font-size: 12px; opacity: 0.7;">${recording.title || "Untitled"}</div>
+				</div>
+			</div>
+		`;
 
 		document.body.appendChild(this.playerContainer);
+	}
 
-		// Initialize rrweb player
+	private startPlayback() {
+		if (this.steps.length === 0) return;
+
+		this.isPlaying = true;
+		this.executeNextStep();
+	}
+
+	private executeNextStep() {
+		if (!this.isPlaying || this.currentStepIndex >= this.steps.length) {
+			this.isPlaying = false;
+			this.showCompletionMessage();
+			return;
+		}
+
+		const step = this.steps[this.currentStepIndex];
+		this.executeStep(step);
+
+		this.currentStepIndex++;
+
+		// Schedule next step
+		const delay = Math.max(500, 1000 / this.playbackSpeed); // Minimum 500ms delay
+		this.playbackInterval = setTimeout(() => {
+			this.executeNextStep();
+		}, delay);
+	}
+
+	private executeStep(step: ChromeDevToolsStep) {
+		console.log("[Zordon Player] Executing step:", step);
+
 		try {
-			this.player = new rrwebPlayer({
-				target: playerWrapper,
-				props: {
-					events: recording.events,
-					autoPlay: true,
-					width: Math.min(1400, window.innerWidth - 100),
-					height: Math.min(900, window.innerHeight - 150),
-					showController: true,
-					skipInactive: true,
-					speed: 1,
-					UNSAFE_replayCanvas: true,
-				},
-			});
-
-			console.log("[Zordon] Player initialized successfully");
+			switch (step.type) {
+				case "navigate":
+					this.executeNavigate(step);
+					break;
+				case "click":
+					this.executeClick(step);
+					break;
+				case "change":
+					this.executeChange(step);
+					break;
+				case "keyDown":
+				case "keyUp":
+					this.executeKeyPress(step);
+					break;
+				case "scroll":
+					this.executeScroll(step);
+					break;
+				default:
+					console.log("[Zordon Player] Unsupported step type:", step.type);
+			}
 		} catch (error) {
-			console.error("[Zordon] Error initializing player:", error);
-			this.showError(
-				"Failed to load recording. The recording may be corrupted or incomplete.",
-			);
+			console.error("[Zordon Player] Error executing step:", error);
 		}
 	}
 
-	private createHeader(recording: RecordingSession): HTMLElement {
-		const header = document.createElement("div");
-		header.style.cssText = `
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 15px 30px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-    `;
-
-		// Title section
-		const titleSection = document.createElement("div");
-		titleSection.innerHTML = `
-      <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">
-        🎬 ${recording.title || "Untitled Recording"}
-      </div>
-      <div style="font-size: 12px; opacity: 0.9;">
-        ${new URL(recording.url).hostname} • ${this.formatDuration(recording.duration || 0)}
-      </div>
-    `;
-		header.appendChild(titleSection);
-
-		// Close button
-		const closeButton = document.createElement("button");
-		closeButton.textContent = "✕ Close";
-		closeButton.style.cssText = `
-      background: rgba(255, 255, 255, 0.2);
-      border: none;
-      color: white;
-      padding: 8px 20px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.3s;
-    `;
-		closeButton.onmouseover = () => {
-			closeButton.style.background = "rgba(255, 255, 255, 0.3)";
-		};
-		closeButton.onmouseout = () => {
-			closeButton.style.background = "rgba(255, 255, 255, 0.2)";
-		};
-		closeButton.onclick = () => this.cleanup();
-		header.appendChild(closeButton);
-
-		return header;
+	private executeNavigate(step: ChromeDevToolsStep) {
+		// For navigation, just log it - don't actually navigate
+		if (step.url && step.url !== window.location.href) {
+			console.log("[Zordon Player] Navigate to:", step.url);
+		}
 	}
 
-	private showError(message: string) {
+	private executeClick(step: ChromeDevToolsStep) {
+		const element = this.findElement(step.target?.selectors);
+		if (element) {
+			this.highlightElement(element);
+
+			// Simulate click
+			setTimeout(() => {
+				const rect = element.getBoundingClientRect();
+				const event = new MouseEvent("click", {
+					bubbles: true,
+					cancelable: true,
+					clientX: rect.left + (step.offsetX || rect.width / 2),
+					clientY: rect.top + (step.offsetY || rect.height / 2),
+					button:
+						step.button === "primary" ? 0 : step.button === "middle" ? 1 : 2,
+				});
+				element.dispatchEvent(event);
+			}, 200);
+		}
+	}
+
+	private executeChange(step: ChromeDevToolsStep) {
+		const element = this.findElement(
+			step.target?.selectors,
+		) as HTMLInputElement;
+		if (element && step.value !== undefined) {
+			this.highlightElement(element);
+
+			setTimeout(() => {
+				element.value = step.value || "";
+				element.dispatchEvent(new Event("input", { bubbles: true }));
+				element.dispatchEvent(new Event("change", { bubbles: true }));
+			}, 200);
+		}
+	}
+
+	private executeKeyPress(step: ChromeDevToolsStep) {
+		const element = this.findElement(step.target?.selectors);
+		if (element && step.key) {
+			this.highlightElement(element);
+
+			setTimeout(() => {
+				const event = new KeyboardEvent(
+					step.type === "keyDown" ? "keydown" : "keyup",
+					{
+						key: step.key,
+						bubbles: true,
+						cancelable: true,
+					},
+				);
+				element.dispatchEvent(event);
+			}, 200);
+		}
+	}
+
+	private executeScroll(_step: ChromeDevToolsStep) {
+		// For scroll, scroll the window
+		window.scrollTo({
+			top: window.scrollY + 100, // Scroll down a bit
+			behavior: "smooth",
+		});
+	}
+
+	private findElement(selectors?: string[][]): Element | null {
+		if (!selectors || selectors.length === 0) return null;
+
+		// Try each selector strategy
+		for (const selectorArray of selectors) {
+			for (const selector of selectorArray) {
+				try {
+					const element = document.querySelector(selector);
+					if (element) return element;
+				} catch {}
+			}
+		}
+
+		return null;
+	}
+
+	private highlightElement(element: Element) {
+		// Add highlight effect
+		const originalStyle = element.getAttribute("style") || "";
+		element.setAttribute(
+			"style",
+			originalStyle +
+				"; outline: 3px solid #ff6b6b; outline-offset: 2px; transition: outline 0.3s;",
+		);
+
+		setTimeout(() => {
+			element.setAttribute("style", originalStyle);
+		}, 1000);
+	}
+
+	private showCompletionMessage() {
 		if (this.playerContainer) {
-			const error = document.createElement("div");
-			error.style.cssText = `
-        color: white;
-        text-align: center;
-        padding: 40px;
-        font-size: 16px;
-      `;
-			error.textContent = message;
-			this.playerContainer.appendChild(error);
-		}
-	}
+			this.playerContainer.style.display = "block";
+			this.playerContainer.innerHTML = `
+				<div style="display: flex; align-items: center; gap: 10px;">
+					<div style="font-size: 16px;">✅</div>
+					<div>
+						<div style="font-weight: 600; margin-bottom: 2px;">Playback Complete!</div>
+						<div style="font-size: 12px; opacity: 0.7;">All steps executed successfully</div>
+					</div>
+				</div>
+			`;
 
-	private formatDuration(ms: number): string {
-		const seconds = Math.floor(ms / 1000);
-		const minutes = Math.floor(seconds / 60);
-		const remainingSeconds = seconds % 60;
-		return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+			// Auto-hide after 3 seconds
+			setTimeout(() => {
+				this.cleanup();
+			}, 3000);
+		}
 	}
 
 	private cleanup() {
-		if (this.player) {
-			// Clean up player instance
-			this.player = null;
+		if (this.playbackInterval) {
+			clearTimeout(this.playbackInterval);
+			this.playbackInterval = null;
 		}
+
+		this.isPlaying = false;
+		this.currentStepIndex = 0;
+		this.steps = [];
 
 		if (this.playerContainer) {
 			this.playerContainer.remove();

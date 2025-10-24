@@ -16,7 +16,7 @@ class PopupController {
 
 	private currentStatus: RecordingStatus = RecordingStatus.IDLE;
 	private recordings: RecordingSession[] = [];
-	private user: any | null = null;
+	private user: { id: string; name: string } | null = null;
 	constructor() {
 		// Get DOM elements
 		this.startButton = document.getElementById(
@@ -102,6 +102,8 @@ class PopupController {
 				type: MessageType.GET_STATUS,
 			});
 
+			console.log("[Zordon Popup] LOAD STATE:", response);
+
 			this.currentStatus = response.status;
 			this.playbackToggle.checked = response.playbackEnabled;
 			this.updateUI();
@@ -130,7 +132,7 @@ class PopupController {
 
 			console.log("[Zordon Popup] Response:", response);
 
-			if (response && response.success) {
+			if (response?.success) {
 				this.currentStatus = RecordingStatus.RECORDING;
 				this.updateUI();
 				console.log("[Zordon Popup] Recording started successfully");
@@ -197,10 +199,16 @@ class PopupController {
 			item.className = "recording-item";
 
 			const info = document.createElement("div");
+			const stepsCount = recording.steps?.length || 0;
+			const eventsCount = recording.events?.length || 0;
+
 			info.innerHTML = `
         <div style="font-weight: 600; margin-bottom: 2px;">${recording.title || "Untitled"}</div>
-        <div style="opacity: 0.7;">
+        <div style="opacity: 0.7; font-size: 12px;">
           ${new Date(recording.startTime).toLocaleString()} • ${this.formatDuration(recording.duration || 0)}
+        </div>
+        <div style="opacity: 0.6; font-size: 11px; margin-top: 2px;">
+          ${stepsCount} steps • ${eventsCount} events
         </div>
       `;
 
@@ -212,12 +220,19 @@ class PopupController {
 			playButton.className = "btn-primary";
 			playButton.onclick = () => this.playRecording(recording.id);
 
+			const exportButton = document.createElement("button");
+			exportButton.textContent = "📥";
+			exportButton.className = "btn-secondary";
+			exportButton.title = "Export as Chrome DevTools format";
+			exportButton.onclick = () => this.exportRecording(recording);
+
 			const deleteButton = document.createElement("button");
 			deleteButton.textContent = "🗑️";
 			deleteButton.className = "btn-danger";
 			deleteButton.onclick = () => this.deleteRecording(recording.id);
 
 			actions.appendChild(playButton);
+			actions.appendChild(exportButton);
 			actions.appendChild(deleteButton);
 
 			item.appendChild(info);
@@ -246,7 +261,7 @@ class PopupController {
 
 			console.log("[Zordon Popup] Playback response:", response);
 
-			if (response && response.success) {
+			if (response?.success) {
 				this.showSuccess("Playing recording...");
 				// Close popup to show playback
 				setTimeout(() => window.close(), 500);
@@ -256,6 +271,35 @@ class PopupController {
 		} catch (error) {
 			console.error("[Zordon Popup] Error playing recording:", error);
 			this.showError(`Failed to play recording: ${(error as Error).message}`);
+		}
+	}
+
+	private exportRecording(recording: RecordingSession) {
+		try {
+			// Create Chrome DevTools Recorder compatible format
+			const chromeDevToolsFormat = {
+				title: recording.title || "Untitled Recording",
+				steps: recording.steps || [],
+			};
+
+			// Create downloadable file
+			const blob = new Blob([JSON.stringify(chromeDevToolsFormat, null, 2)], {
+				type: "application/json",
+			});
+
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = `${recording.title || "recording"}-${recording.id}.json`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+
+			this.showSuccess("Recording exported successfully!");
+		} catch (error) {
+			console.error("Error exporting recording:", error);
+			this.showError("Failed to export recording");
 		}
 	}
 

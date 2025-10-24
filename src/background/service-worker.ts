@@ -206,6 +206,12 @@ class BackgroundService {
 					// Receive recording data from content script
 					if (this.currentRecording) {
 						this.currentRecording.events = message.payload.events;
+
+						// Extract Chrome DevTools compatible steps
+						this.currentRecording.steps = message.payload.events
+							.filter((event: any) => event.step)
+							.map((event: any) => event.step);
+
 						await this.saveRecording(this.currentRecording);
 						console.log(
 							"[Zordon Background] Saved recording with",
